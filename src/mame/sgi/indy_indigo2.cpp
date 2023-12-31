@@ -78,6 +78,8 @@
 #include "screen.h"
 #include "softlist.h"
 
+#define VERBOSE ( 1 )
+
 #include "logmacro.h"
 
 
@@ -89,7 +91,7 @@ public:
 	ip24_state(const machine_config &mconfig, device_type type, const char *tag)
 		: driver_device(mconfig, type, tag)
 		, m_maincpu(*this, "maincpu")
-		, m_mainram(*this, "mainram")
+		, m_mainram(*this, "mainram", 0x50000000, ENDIANNESS_LITTLE)
 		, m_mem_ctrl(*this, "memctrl")
 		, m_scsi_ctrl(*this, "scsibus:0:wd33c93")
 		, m_edlc(*this, "edlc")
@@ -138,7 +140,7 @@ protected:
 	static void scsi_devices(device_slot_interface &device);
 
 	required_device<mips3_device> m_maincpu;
-	required_shared_ptr<uint64_t> m_mainram;
+	memory_share_creator<uint64_t> m_mainram;
 	required_device<sgi_mc_device> m_mem_ctrl;
 	required_device<wd33c93b_device> m_scsi_ctrl;
 	required_device<seeq80c03_device> m_edlc;
@@ -206,19 +208,32 @@ uint32_t ip22_state::eisa_io_r()
 // a bit hackish, but makes the memory detection work properly and allows a big cleanup of the mapping
 void ip24_state::write_ram(offs_t offset, uint64_t data, uint64_t mem_mask)
 {
-	// if banks 2 or 3 are enabled, do nothing, we don't support that much memory
-	if (m_mem_ctrl->get_mem_config(1) & 0x10001000)
-	{
-		// a random perturbation so the memory test fails
-		data ^= 0xffffffffffffffffULL;
+	uint8_t valid_banks = 0;
+
+	valid_banks += (uint8_t) BIT(m_mem_ctrl->get_mem_config(0), 13);
+	valid_banks += (uint8_t) BIT(m_mem_ctrl->get_mem_config(0), 29);
+	valid_banks += (uint8_t) BIT(m_mem_ctrl->get_mem_config(1), 13);
+	valid_banks += (uint8_t) BIT(m_mem_ctrl->get_mem_config(1), 29);
+
+	// If only one bank is enabled, we need to simulate address wrapping
+	if (valid_banks == 1)	{
+		LOG("probe write_ram: %08x %08x)\n", offset, data);
+		if (BIT(m_mem_ctrl->get_mem_config(0), 13)) {
+			if (BIT(m_mem_ctrl->get_mem_config(0), 14))
+				offset %= (0x8000000 >> 3);
+			else
+				offset %= (0x4000000 >> 3);
+			LOG("New offset %08x\n", offset);
+		}
+
+		if (BIT(m_mem_ctrl->get_mem_config(1), 29)) {
+			data ^= 0xffffffffffffffffULL;
+			LOG("New offset BLUR dara\n", offset);
+		}
 	}
 
-	// if banks 0 or 1 have 2 membanks, also kill it, we only want 128 MB
-	if (m_mem_ctrl->get_mem_config(0) & 0x40004000)
-	{
-		// a random perturbation so the memory test fails
-		data ^= 0xffffffffffffffffULL;
-	}
+	offset += (0x10000000 >> 3);
+
 	COMBINE_DATA(&m_mainram[offset]);
 }
 
@@ -247,13 +262,13 @@ void ip24_state::volume_w(offs_t offset, uint8_t data)
 void ip24_state::ip24_base_map(address_map &map)
 {
 	map(0x00000000, 0x0007ffff).bankrw("bank1");    /* mirror of first 512k of main RAM */
-	map(0x08000000, 0x0fffffff).share("mainram").ram().w(FUNC(ip24_state::write_ram));     /* 128 MB of main RAM */
+	map(0x08000000, 0x17ffffff).bankrw("bank2");    /* 256MB Low main ram */
 	map(0x1f000000, 0x1f9fffff).rw(m_gio64, FUNC(gio64_device::read), FUNC(gio64_device::write));
 	map(0x1fa00000, 0x1fa1ffff).rw(m_mem_ctrl, FUNC(sgi_mc_device::read), FUNC(sgi_mc_device::write));
 	map(0x1fb00000, 0x1fb7ffff).rw(FUNC(ip24_state::bus_error_r<0x1fb00000>), FUNC(ip24_state::bus_error_w<0x1fb00000>));
 	map(0x1fb80000, 0x1fbfffff).m(m_hpc3, FUNC(hpc3_device::map));
 	map(0x1fc00000, 0x1fc7ffff).rom().region("user1", 0);
-	map(0x20000000, 0x27ffffff).share("mainram").ram().w(FUNC(ip24_state::write_ram));
+	map(0x20000000, 0x5fffffff).bankrw("bank3").w(FUNC(ip24_state::write_ram));
 }
 
 void ip24_state::ip24_map(address_map &map)
@@ -308,6 +323,8 @@ void ip24_state::machine_reset()
 {
 	// set up low RAM mirror
 	membank("bank1")->set_base(m_mainram);
+	membank("bank2")->set_base(m_mainram);
+	membank("bank3")->set_base(m_mainram + (0x10000000 >> 3));
 
 	//m_maincpu->mips3drc_set_options(MIPS3DRC_COMPATIBLE_OPTIONS | MIPS3DRC_CHECK_OVERFLOWS);
 }

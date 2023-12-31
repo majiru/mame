@@ -22,7 +22,7 @@
 #define LOG_DMA         (1 << 8)
 #define LOG_DEFAULT     (LOG_READS | LOG_WRITES | LOG_RPSS | LOG_WATCHDOG | LOG_UNKNOWN)
 
-#define VERBOSE         (0)
+#define VERBOSE         (0xff)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(SGI_MC, sgi_mc_device, "sgi_mc", "SGI Memory Controller")
@@ -80,7 +80,7 @@ void sgi_mc_device::device_resolve_objects()
 
 void sgi_mc_device::device_start()
 {
-	m_sys_id = 0x03; // rev. C MC
+	m_sys_id = 0x05; // PROM requres REV5 to support 512MB of RAM
 	m_sys_id |= m_eisa_present() << 4;
 
 	m_dma_timer = timer_alloc(FUNC(sgi_mc_device::perform_dma), this);
@@ -542,15 +542,15 @@ void sgi_mc_device::write(offs_t offset, uint32_t data, uint32_t mem_mask)
 				"Invalid", "Invalid", "Invalid", "Invalid", "Invalid", "Invalid", "Invalid", "Invalid",
 				"Invalid", "Invalid", "Invalid", "Invalid", "Invalid", "Invalid", "Invalid", "8Mx36, 2 subbanks" };
 		const uint32_t index = (offset >> 1) & 1;
-		LOGMASKED(LOG_MEMCFG, "%s: Memory Configuration Register %d Write: %08x & %08x\n", machine().describe_context(), index, data, mem_mask);
-		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, Base Address: %02x\n", machine().describe_context(), index, (data >> 16) & 0xff);
-		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, SIMM Size: %02x (%s)\n", machine().describe_context(), index, (data >> 24) & 0x1f, s_mem_size[(data >> 24) & 0x1f]);
-		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, Valid: %d\n", machine().describe_context(), index, BIT(data, 29));
-		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, # Subbanks: %d\n", machine().describe_context(), index, BIT(data, 30) + 1);
-		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, Base Address: %02x\n", machine().describe_context(), index+1, data & 0xff);
-		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, SIMM Size: %02x (%s)\n", machine().describe_context(), index+1, (data >> 8) & 0x1f, s_mem_size[(data >> 8) & 0x1f]);
-		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, Valid: %d\n", machine().describe_context(), index+1, BIT(data, 13));
-		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, # Subbanks: %d\n", machine().describe_context(), index+1, BIT(data, 14) + 1);
+		LOGMASKED(LOG_MEMCFG, "%s: Memory Configuration Register %d Write: %08x & %08x\n", machine().describe_context(), index*2+1, data, mem_mask);
+		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, Base Address: %02x\n", machine().describe_context(), index*2, data & 0xff);
+		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, SIMM Size: %02x (%s)\n", machine().describe_context(), index*2, (data >> 8) & 0x1f, s_mem_size[(data >> 8) & 0x1f]);
+		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, Valid: %d\n", machine().describe_context(), index*2, BIT(data, 13));
+		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, # Subbanks: %d\n", machine().describe_context(), index*2, BIT(data, 14) + 1);
+		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, Base Address: %02x\n", machine().describe_context(), index*2+1, (data >> 16) & 0xff);
+		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, SIMM Size: %02x (%s)\n", machine().describe_context(), index*2+1, (data >> 24) & 0x1f, s_mem_size[(data >> 24) & 0x1f]);
+		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, Valid: %d\n", machine().describe_context(), index*2+1, BIT(data, 29));
+		LOGMASKED(LOG_MEMCFG_EXT, "%s:     Bank %d, # Subbanks: %d\n", machine().describe_context(), index*2+1, BIT(data, 30) + 1);
 		m_mem_config[index] = data;
 		break;
 	}
